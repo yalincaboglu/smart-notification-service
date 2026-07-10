@@ -1,0 +1,8 @@
+aws_region          = "us-east-1"
+instance_type       = "t3.micro"
+ssh_key_name        = "smart-notification-key"
+ssh_public_key_path = "C:/Users/YourUser/.ssh/id_rsa.pub"
+repo_url            = "https://github.com/YOUR_USER/smart-notification.git"
+repo_branch         = "main"
+instance_name       = "smart-notification-instance"
+allowed_ip_cidr     = "0.0.0.0/0"

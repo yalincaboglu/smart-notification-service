@@ -1,0 +1,180 @@
+# ============================================
+# Volumes (Persistent data storage)
+# ============================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  app_logs:
+    driver: local
+
+# ============================================
+# Networks (Servisler arası iletişim)
+# ============================================
+networks:
+  smart-notification-network:
+    driver: bridge
+
+# ============================================
+# Services
+# ============================================
+services:
+  
+  # ============ Python App ============
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart-notification-app
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - LOG_DIR=/app/logs
+      # Database config (ilerde kullanılacak)
+      - DATABASE_URL=postgresql://notification_user:notification_pass@postgres:5432/notifications_db
+      # Redis config (ilerde kullanılacak)
+      - REDIS_URL=redis://redis:6379/0
+      # Celery config
+      - CELERY_BROKER_URL=redis://:redis_secure_pass@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:redis_secure_pass@redis:6379/1
+    volumes:
+      - ./src:/app/src              # Kodları bağl (development için)
+      - ./logs:/app/logs            # Logları host'ta görebilmek için
+      - app_logs:/app/logs_docker   # Container logları
+    ports:
+      - "8000:8000"                 # API port (ileride FastAPI/Flask için)
+    networks:
+      - smart-notification-network
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "print('ok')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    labels:
+      - "com.example.description=Smart Notification Application"
+      - "com.example.version=0.1.0"
+
+
+  # ============ Celery Worker ============
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smart-notification-worker
+    command: celery -A src.celery_worker.app worker --loglevel=info --concurrency=1
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - LOG_DIR=/app/logs
+      - CELERY_BROKER_URL=redis://:redis_secure_pass@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:redis_secure_pass@redis:6379/1
+    volumes:
+      - ./src:/app/src
+      - ./logs:/app/logs
+      - app_logs:/app/logs_docker
+    networks:
+      - smart-notification-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    labels:
+      - "com.example.description=Celery Worker"
+      - "com.example.version=0.1.0"
+
+
+  # ============ PostgreSQL Database ============
+  postgres:
+    image: postgres:15-alpine
+    container_name: smart-notification-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: notification_user
+      POSTGRES_PASSWORD: notification_pass
+      POSTGRES_DB: notifications_db
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - smart-notification-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification_user -d notifications_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      - "com.example.description=PostgreSQL Database"
+      - "com.example.version=15"
+
+
+  # ============ Redis Cache ============
+  redis:
+    image: redis:7-alpine
+    container_name: smart-notification-cache
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass redis_secure_pass
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - smart-notification-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    labels:
+      - "com.example.description=Redis Cache"
+      - "com.example.version=7"
+
+
+  # ============ pgAdmin (PostgreSQL Admin Panel) ============
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: smart-notification-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: pgadmin_pass
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    networks:
+      - smart-notification-network
+    depends_on:
+      - postgres
+    labels:
+      - "com.example.description=PostgreSQL Admin Panel"
+      - "com.example.version=latest"
+
+
+  # ============ Redis Commander (Redis Admin Panel) ============
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: smart-notification-redis-commander
+    restart: unless-stopped
+    environment:
+      - REDIS_HOSTS=local:redis:6379:0:redis_secure_pass
+      - REDIS_PASSWORD=redis_secure_pass
+    ports:
+      - "8081:8081"
+    networks:
+      - smart-notification-network
+    depends_on:
+      - redis
+    labels:
+      - "com.example.description=Redis Admin Panel"
+      - "com.example.version=latest"
