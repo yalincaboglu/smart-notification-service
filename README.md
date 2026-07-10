@@ -205,6 +205,3 @@ smart-notification/
 
 ---
 
-## 📬 Contact / İletişim
-
-If you'd like to collaborate or discuss improvements, open an issue or message me on GitHub. / İş birliği yapmak veya geliştirmeleri tartışmak isterseniz, GitHub üzerinde issue açın veya bana mesaj gönderin.
